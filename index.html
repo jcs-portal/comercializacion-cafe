@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#2C1810" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Comercialización" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="description" content="Comercialización de café para productores de San Adolfo, Huila · Ubuntu Café" />
+  <title>Comercialización de Café · Ubuntu Café</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; overscroll-behavior: none; }
+    body { background: #F5EDD8; font-family: -apple-system, 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    input, select, textarea { font-size: 16px !important; font-family: inherit; }
+    input[type=number] { -moz-appearance: textfield; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    button { min-height: 44px; touch-action: manipulation; -webkit-appearance: none; cursor: pointer; }
+    .scroll-area { -webkit-overflow-scrolling: touch; overflow-y: auto; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .seccion { animation: fadeIn 0.25s ease; }
+    .header-safe { padding-top: max(18px, env(safe-area-inset-top)); }
+    .nav-safe { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 5px 4px; font-size: 11px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+const API_BASE = "https://doc-comite-finanzas-production.up.railway.app/api";
+
+async function parsearRespuesta(r) {
+  const tipo = r.headers.get("content-type") || "";
+  if (!tipo.includes("application/json")) {
+    throw new Error(`Esta función todavía no está disponible en el servidor (ruta ${new URL(r.url).pathname}). Pide que se despliegue el backend actualizado.`);
+  }
+  const datos = await r.json();
+  if (!r.ok) throw new Error(datos?.error || "Error de conexión");
+  return datos;
+}
+let currentPassword = localStorage.getItem("ccaf_password") || "";
+function setCurrentPassword(p) { currentPassword = p || ""; localStorage.setItem("ccaf_password", currentPassword); }
+
+async function apiGet(ruta, code) {
+  const r = await fetch(API_BASE + ruta, { headers: { "X-Code": code, "X-Password": currentPassword } });
+  return parsearRespuesta(r);
+}
+async function apiPost(ruta, code, body) {
+  const r = await fetch(API_BASE + ruta, { method: "POST", headers: { "Content-Type": "application/json", "X-Code": code, "X-Password": currentPassword }, body: JSON.stringify(body) });
+  return parsearRespuesta(r);
+}
+async function apiPut(ruta, code, body) {
+  const r = await fetch(API_BASE + ruta, { method: "PUT", headers: { "Content-Type": "application/json", "X-Code": code, "X-Password": currentPassword }, body: JSON.stringify(body) });
+  return parsearRespuesta(r);
+}
+async function apiDelete(ruta, code) {
+  const r = await fetch(API_BASE + ruta, { method: "DELETE", headers: { "X-Code": code, "X-Password": currentPassword } });
+  return parsearRespuesta(r);
+}
+function descargarExcel(ruta, code, nombreSugerido) {
+  fetch(API_BASE + ruta, { headers: { "X-Code": code, "X-Password": currentPassword } })
+    .then(r => r.blob())
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = nombreSugerido; document.body.appendChild(a); a.click();
+      a.remove(); URL.revokeObjectURL(url);
+    });
+}
+
+const C = {
+  earth: "#2C1810", roast: "#5C3A21", bark: "#8B5E3C", clay: "#C4956A",
+  cream: "#F5EDD8", fog: "#EDE4D0", leaf: "#3A5C2A",
+  mist: "#C8D9B5", alert: "#C0392B", warn: "#D4851A", ok: "#3A5C2A",
+  white: "#FDFAF4",
+};
+const fmtCOP = n => (n == null || isNaN(n)) ? "—" : Math.round(n).toLocaleString("es-CO") + " COP";
+const fmtKg = n => (n == null || isNaN(n)) ? "—" : Number(n).toLocaleString("es-CO") + " kg";
+const fmtPct = n => (n == null || isNaN(n)) ? "—" : n.toLocaleString("es-CO") + "%";
+
+// ── COMPONENTES BASE ──────────────────────────────────────────────────────────
+function Campo({ label, value, onChange, tipo = "text", placeholder, opciones }) {
+  if (opciones) {
+    return (
+      <div style={{ marginBottom: 10 }}>
+        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.bark, marginBottom: 3 }}>{label}</label>
+        <select value={value ?? ""} onChange={e => onChange(e.target.value)}
+          style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: `1.5px solid ${C.clay}`, background: C.white, color: C.earth }}>
+          <option value="">— Elige —</option>
+          {opciones.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.bark, marginBottom: 3 }}>{label}</label>
+      <input type={tipo} value={value ?? ""} onChange={e => onChange(tipo === "number" ? (e.target.value === "" ? "" : parseFloat(e.target.value)) : e.target.value)} placeholder={placeholder}
+        style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: `1.5px solid ${C.clay}`, background: C.white, color: C.earth }} />
+    </div>
+  );
+}
+function Boton({ children, onClick, color = C.roast, disabled, full = true, small }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      width: full ? "100%" : "auto", borderRadius: small ? 8 : 12, border: "none",
+      padding: small ? "8px 12px" : "13px 0", background: color, color: C.cream,
+      fontSize: small ? 12 : 15, fontWeight: 800, opacity: disabled ? 0.6 : 1,
+    }}>{children}</button>
+  );
+}
+function Tarjeta({ children, style }) {
+  return <div style={{ background: C.white, borderRadius: 12, padding: 14, marginBottom: 12, boxShadow: "0 2px 6px rgba(0,0,0,0.08)", ...style }}>{children}</div>;
+}
+function Titulo({ children }) {
+  return <h3 style={{ fontSize: 12, fontWeight: 900, color: C.roast, textTransform: "uppercase", letterSpacing: 1, margin: "16px 0 10px" }}>{children}</h3>;
+}
+
+// ── LOGIN ──────────────────────────────────────────────────────────────────────
+function Login({ onLogin, codigoInicial, errorInicial }) {
+  const [codigo, setCodigo] = useState(() => codigoInicial || new URLSearchParams(location.search).get("code")?.toUpperCase() || "");
+  const [password, setPassword] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState(errorInicial || "");
+
+  const entrar = async () => {
+    const c = codigo.trim().toUpperCase();
+    if (!c) { setError("Escribe tu código"); return; }
+    setCargando(true); setError("");
+    setCurrentPassword(password);
+    try {
+      const who = await apiGet("/whoami", c);
+      onLogin(who);
+    } catch (e) {
+      setError(e.message === "Contraseña incorrecta" ? "⚠️ Contraseña incorrecta" : "Código no reconocido. Verifica con tu formador.");
+      setCurrentPassword("");
+    } finally { setCargando(false); }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.cream, maxWidth: 480, margin: "0 auto",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ fontSize: 48, marginBottom: 8 }}>📦</div>
+      <h1 style={{ fontSize: 20, fontWeight: 900, color: C.earth, marginBottom: 4, textAlign: "center" }}>Comercialización de Café</h1>
+      <p style={{ fontSize: 13, color: C.bark, marginBottom: 28, textAlign: "center" }}>Ubuntu Café · San Adolfo y Acevedo, Huila</p>
+      <label style={{ display: "block", fontSize: 14, fontWeight: 700, color: C.earth, marginBottom: 8, alignSelf: "flex-start" }}>
+        Tu código (el mismo de Finanzas y Diagnóstico)
+      </label>
+      <input
+        type="text" value={codigo} autoFocus
+        onChange={e => { setCodigo(e.target.value); setError(""); }}
+        onKeyDown={e => e.key === "Enter" && entrar()}
+        placeholder="Ej. SA-01"
+        style={{ width: "100%", padding: "13px 16px", border: `2px solid ${error ? C.alert : C.clay}`,
+          borderRadius: 10, fontSize: 18, textAlign: "center", textTransform: "uppercase",
+          background: C.white, color: C.earth, outline: "none", marginBottom: 10 }}
+      />
+      <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.bark, marginBottom: 6, alignSelf: "flex-start" }}>
+        Contraseña (si tu formador te asignó una)
+      </label>
+      <input
+        type="password" value={password}
+        onChange={e => { setPassword(e.target.value); setError(""); }}
+        onKeyDown={e => e.key === "Enter" && entrar()}
+        placeholder="Déjalo vacío si no tienes"
+        style={{ width: "100%", padding: "13px 16px", border: `2px solid ${C.clay}`,
+          borderRadius: 10, fontSize: 16, textAlign: "center",
+          background: C.white, color: C.earth, outline: "none", marginBottom: 10 }}
+      />
+      {error && <p style={{ color: C.alert, fontSize: 13, marginBottom: 10 }}>{error}</p>}
+      <Boton onClick={entrar} disabled={cargando}>{cargando ? "Verificando…" : "Entrar →"}</Boton>
+    </div>
+  );
+}
+
+// ── TAB 1: MI FINCA Y PRODUCCIÓN ───────────────────────────────────────────────
+function MiFinca({ code, listasRef }) {
+  const [finca, setFinca] = useState(null);
+  const [mensaje, setMensaje] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => { apiGet("/comercializacion/finca", code).then(setFinca); }, []);
+
+  const guardar = async () => {
+    setGuardando(true); setMensaje("");
+    try { setFinca(await apiPut("/comercializacion/finca", code, finca)); setMensaje("✅ Guardado"); }
+    catch (e) { setMensaje("⚠️ " + e.message); }
+    finally { setGuardando(false); }
+  };
+  const campo = (k, v) => setFinca(f => ({ ...f, [k]: v }));
+  const filaProd = (i, k, v) => setFinca(f => { const p = [...f.produccion]; p[i] = { ...p[i], [k]: v }; return { ...f, produccion: p }; });
+  const addFila = () => setFinca(f => ({ ...f, produccion: [...(f.produccion || []), { variedad: "", kgCerezaCosechados: "", etapaHabitualVenta: "", notas: "" }] }));
+  const delFila = (i) => setFinca(f => ({ ...f, produccion: f.produccion.filter((_, idx) => idx !== i) }));
+
+  if (!finca) return <div style={{ padding: 20, color: C.bark }}>Cargando…</div>;
+  const variedades = (listasRef.variedades || []).map(v => ({ value: v.nombre, label: v.nombre }));
+  const etapas = (listasRef.etapas || []).map(e => ({ value: e.id, label: `${e.id} — ${e.label}` }));
+
+  return (
+    <div className="seccion" style={{ padding: "12px 16px 100px" }}>
+      <Tarjeta>
+        <Campo label="Nombre de la finca" value={finca.nombreFinca} onChange={v => campo("nombreFinca", v)} />
+        <Campo label="Vereda" value={finca.vereda} onChange={v => campo("vereda", v)} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><Campo label="Municipio" value={finca.municipio} onChange={v => campo("municipio", v)} /></div>
+          <div style={{ flex: 1 }}><Campo label="Departamento" value={finca.departamento} onChange={v => campo("departamento", v)} /></div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><Campo label="Altitud (m s.n.m.)" tipo="number" value={finca.altitud} onChange={v => campo("altitud", v)} /></div>
+          <div style={{ flex: 1 }}><Campo label="Área (ha)" tipo="number" value={finca.areaHa} onChange={v => campo("areaHa", v)} /></div>
+        </div>
+        <Campo label="Teléfono / WhatsApp" value={finca.telefono} onChange={v => campo("telefono", v)} />
+        <Campo label="Certificaciones activas" value={finca.certificaciones} onChange={v => campo("certificaciones", v)} placeholder="Ej. Orgánico, 4C, Rainforest…" />
+      </Tarjeta>
+
+      <Titulo>Producción por variedad — temporada actual</Titulo>
+      {(finca.produccion || []).map((p, i) => (
+        <Tarjeta key={i}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={() => delFila(i)} style={{ background: "none", border: "none", color: C.alert, fontSize: 12 }}>✕ quitar</button>
+          </div>
+          <Campo label="Variedad" value={p.variedad} onChange={v => filaProd(i, "variedad", v)} opciones={variedades} />
+          <Campo label="Kg cereza cosechados" tipo="number" value={p.kgCerezaCosechados} onChange={v => filaProd(i, "kgCerezaCosechados", v)} />
+          <Campo label="Etapa habitual de venta" value={p.etapaHabitualVenta} onChange={v => filaProd(i, "etapaHabitualVenta", v)} opciones={etapas} />
+          <Campo label="Notas" value={p.notas} onChange={v => filaProd(i, "notas", v)} />
+        </Tarjeta>
+      ))}
+      <Boton onClick={addFila} color={C.bark} small full={false}>+ Añadir variedad</Boton>
+
+      {mensaje && <div style={{ fontSize: 12, color: C.roast, margin: "12px 0" }}>{mensaje}</div>}
+      <div style={{ marginTop: 16 }}><Boton onClick={guardar} disabled={guardando} color={C.leaf}>{guardando ? "Guardando…" : "💾 Guardar"}</Boton></div>
+    </div>
+  );
+}
+
+// ── TAB 2: MIS CLIENTES ────────────────────────────────────────────────────────
+function MisClientes({ code, listasRef, onCambio }) {
+  const [clientes, setClientes] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const vacio = { nombre: "", tipoActor: "", pais: "", ciudad: "", etapasQueCompra: "", incotermHabitual: "", condicionPago: "", activo: true };
+  const [form, setForm] = useState(vacio);
+  const [mensaje, setMensaje] = useState("");
+
+  const cargar = () => apiGet("/comercializacion/clientes", code).then(d => { setClientes(d.clientes || []); onCambio && onCambio(d.clientes || []); }).finally(() => setCargando(false));
+  useEffect(() => { cargar(); }, []);
+
+  const agregar = async () => {
+    if (!form.nombre) { setMensaje("⚠️ Ponle un nombre al cliente"); return; }
+    try { await apiPost("/comercializacion/clientes", code, form); setForm(vacio); setMostrarForm(false); cargar(); }
+    catch (e) { setMensaje("⚠️ " + e.message); }
+  };
+  const borrar = async (id) => { if (!confirm("¿Borrar este cliente?")) return; await apiDelete(`/comercializacion/clientes/${id}`, code); cargar(); };
+
+  const tipos = (listasRef.tiposCliente || []).map(t => ({ value: t.id, label: t.label }));
+  const incoterms = (listasRef.incoterms || []).map(i => ({ value: i.id, label: i.label }));
+
+  if (cargando) return <div style={{ padding: 20, color: C.bark }}>Cargando…</div>;
+  return (
+    <div className="seccion" style={{ padding: "12px 16px 100px" }}>
+      <Boton onClick={() => setMostrarForm(s => !s)} small full={false}>{mostrarForm ? "Cancelar" : "+ Nuevo cliente"}</Boton>
+      {mostrarForm && (
+        <Tarjeta style={{ marginTop: 10 }}>
+          <Campo label="Nombre / Razón social" value={form.nombre} onChange={v => setForm(f => ({ ...f, nombre: v }))} />
+          <Campo label="Tipo de actor" value={form.tipoActor} onChange={v => setForm(f => ({ ...f, tipoActor: v }))} opciones={tipos} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1 }}><Campo label="País" value={form.pais} onChange={v => setForm(f => ({ ...f, pais: v }))} /></div>
+            <div style={{ flex: 1 }}><Campo label="Ciudad" value={form.ciudad} onChange={v => setForm(f => ({ ...f, ciudad: v }))} /></div>
+          </div>
+          <Campo label="Etapas que compra" value={form.etapasQueCompra} onChange={v => setForm(f => ({ ...f, etapasQueCompra: v }))} placeholder="Ej. E3/E4" />
+          <Campo label="Incoterm habitual" value={form.incotermHabitual} onChange={v => setForm(f => ({ ...f, incotermHabitual: v }))} opciones={incoterms} />
+          <Campo label="Condición de pago" value={form.condicionPago} onChange={v => setForm(f => ({ ...f, condicionPago: v }))} placeholder="Ej. 30 días, contado…" />
+          <Boton onClick={agregar} color={C.leaf}>Guardar cliente</Boton>
+        </Tarjeta>
+      )}
+      {mensaje && <div style={{ fontSize: 12, color: C.roast, margin: "10px 0" }}>{mensaje}</div>}
+      <Titulo>Mis clientes ({clientes.length})</Titulo>
+      {clientes.length === 0 && <div style={{ fontSize: 13, color: C.bark }}>Todavía no tienes clientes registrados.</div>}
+      {clientes.map(c => (
+        <Tarjeta key={c.id}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.earth }}>{c.nombre}</div>
+            <button onClick={() => borrar(c.id)} style={{ background: "none", border: "none", color: C.bark, fontSize: 12 }}>✕</button>
+          </div>
+          <div style={{ fontSize: 12, color: C.roast, marginTop: 2 }}>{tipos.find(t => t.value === c.tipoActor)?.label || c.tipoActor} · {c.pais}{c.ciudad ? `, ${c.ciudad}` : ""}</div>
+          <div style={{ fontSize: 11, color: C.bark, marginTop: 2 }}>Compra: {c.etapasQueCompra || "—"} · Incoterm: {c.incotermHabitual || "—"}</div>
+        </Tarjeta>
+      ))}
+    </div>
+  );
+}
+
+// ── TAB 3: MIS VENTAS ──────────────────────────────────────────────────────────
+function MisVentas({ code, listasRef }) {
+  const [ventas, setVentas] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const vacio = { fecha: "", variedad: "", clienteId: "", etapa: "", cantidad: "", precio: "", moneda: "COP", costeLogistico: 0 };
+  const [form, setForm] = useState(vacio);
+  const [mensaje, setMensaje] = useState("");
+
+  const cargar = () => Promise.all([
+    apiGet("/comercializacion/ventas", code),
+    apiGet("/comercializacion/clientes", code),
+  ]).then(([v, c]) => { setVentas(v.ventas || []); setClientes(c.clientes || []); }).finally(() => setCargando(false));
+  useEffect(() => { cargar(); }, []);
+
+  const agregar = async () => {
+    if (!form.cantidad || !form.precio || !form.clienteId || !form.etapa) { setMensaje("⚠️ Completa cantidad, precio, cliente y etapa"); return; }
+    try { await apiPost("/comercializacion/ventas", code, form); setForm(vacio); setMostrarForm(false); cargar(); }
+    catch (e) { setMensaje("⚠️ " + e.message); }
+  };
+  const borrar = async (id) => { if (!confirm("¿Borrar esta venta?")) return; await apiDelete(`/comercializacion/ventas/${id}`, code); cargar(); };
+
+  const variedades = (listasRef.variedades || []).map(v => ({ value: v.nombre, label: v.nombre }));
+  const etapas = (listasRef.etapas || []).map(e => ({ value: e.id, label: `${e.id} — ${e.label}` }));
+  const monedas = (listasRef.monedas || ["COP", "USD", "EUR"]).map(m => ({ value: m, label: m }));
+  const clientesOp = clientes.map(c => ({ value: c.id, label: c.nombre }));
+
+  if (cargando) return <div style={{ padding: 20, color: C.bark }}>Cargando…</div>;
+  return (
+    <div className="seccion" style={{ padding: "12px 16px 100px" }}>
+      <Boton onClick={() => setMostrarForm(s => !s)} small full={false}>{mostrarForm ? "Cancelar" : "+ Nueva venta"}</Boton>
+      {mostrarForm && (
+        <Tarjeta style={{ marginTop: 10 }}>
+          {clientes.length === 0 && <div style={{ fontSize: 12, color: C.warn, marginBottom: 8 }}>⚠️ Primero añade un cliente en la pestaña "Mis clientes".</div>}
+          <Campo label="Fecha" tipo="date" value={form.fecha} onChange={v => setForm(f => ({ ...f, fecha: v }))} />
+          <Campo label="Variedad" value={form.variedad} onChange={v => setForm(f => ({ ...f, variedad: v }))} opciones={variedades} />
+          <Campo label="Cliente" value={form.clienteId} onChange={v => setForm(f => ({ ...f, clienteId: v }))} opciones={clientesOp} />
+          <Campo label="Etapa de venta" value={form.etapa} onChange={v => setForm(f => ({ ...f, etapa: v }))} opciones={etapas} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1 }}><Campo label="Cantidad (kg)" tipo="number" value={form.cantidad} onChange={v => setForm(f => ({ ...f, cantidad: v }))} /></div>
+            <div style={{ flex: 1 }}><Campo label="Precio" tipo="number" value={form.precio} onChange={v => setForm(f => ({ ...f, precio: v }))} /></div>
+            <div style={{ flex: 1 }}><Campo label="Moneda" value={form.moneda} onChange={v => setForm(f => ({ ...f, moneda: v }))} opciones={monedas} /></div>
+          </div>
+          <Campo label="Coste logístico (COP, opcional)" tipo="number" value={form.costeLogistico} onChange={v => setForm(f => ({ ...f, costeLogistico: v }))} />
+          <Boton onClick={agregar} color={C.leaf}>Guardar venta</Boton>
+        </Tarjeta>
+      )}
+      {mensaje && <div style={{ fontSize: 12, color: C.roast, margin: "10px 0" }}>{mensaje}</div>}
+      <Titulo>Historial de ventas ({ventas.length})</Titulo>
+      {ventas.length === 0 && <div style={{ fontSize: 13, color: C.bark }}>Todavía no has registrado ninguna venta.</div>}
+      {ventas.slice().reverse().map(v => (
+        <Tarjeta key={v.id} style={{ borderLeft: `4px solid ${v.margenNetoCOP >= 0 ? C.leaf : C.alert}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.earth }}>{v.nombreCliente || "Sin cliente"}</div>
+            <button onClick={() => borrar(v.id)} style={{ background: "none", border: "none", color: C.bark, fontSize: 12 }}>✕</button>
+          </div>
+          <div style={{ fontSize: 12, color: C.roast, marginTop: 4 }}>{v.fecha || "Sin fecha"} · {v.variedad} · {v.etapa} · {fmtKg(v.cantidad)} a {v.precio} {v.moneda}/kg</div>
+          <div style={{ fontSize: 12, color: C.bark, marginTop: 2 }}>Ingreso: {fmtCOP(v.ingresoTotalCOP)} · Margen producto: {fmtCOP(v.margenProductoCOP)} ({fmtPct(v.margenProductoPct)}) · Margen neto: {fmtCOP(v.margenNetoCOP)} ({fmtPct(v.margenNetoPct)})</div>
+        </Tarjeta>
+      ))}
+    </div>
+  );
+}
+
+// ── TAB 4: MI RESUMEN ──────────────────────────────────────────────────────────
+function KPI({ label, valor, color }) {
+  return (
+    <div style={{ flex: 1, minWidth: 120 }}>
+      <div style={{ fontSize: 10, color: C.fog, fontWeight: 700, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: 17, fontWeight: 900, color: color || C.cream }}>{valor}</div>
+    </div>
+  );
+}
+function MiResumen({ code }) {
+  const [r, setR] = useState(null);
+  useEffect(() => { apiGet("/comercializacion/resumen", code).then(setR); }, []);
+  if (!r) return <div style={{ padding: 20, color: C.bark }}>Cargando…</div>;
+  const variedades = Object.entries(r.porVariedad || {}).filter(([, d]) => d.kg > 0);
+  const meses = Object.entries(r.porMes || {}).filter(([, d]) => d.kg > 0);
+  const clientesResumen = Object.entries(r.porCliente || {});
+
+  return (
+    <div className="seccion" style={{ padding: "12px 16px 100px" }}>
+      <Tarjeta style={{ background: C.earth }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 10 }}>
+          <KPI label="Total kg vendidos" valor={fmtKg(r.totalKg)} />
+          <KPI label="Ingreso total" valor={fmtCOP(r.ingresoTotal)} />
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          <KPI label="Margen producto" valor={`${fmtCOP(r.margenProductoTotal)} (${fmtPct(r.margenProductoPct)})`} color={r.margenProductoTotal >= 0 ? C.mist : "#F0A0A0"} />
+          <KPI label="Margen neto" valor={`${fmtCOP(r.margenNetoTotal)} (${fmtPct(r.margenNetoPct)})`} color={r.margenNetoTotal >= 0 ? C.mist : "#F0A0A0"} />
+        </div>
+        <div style={{ fontSize: 12, color: C.clay, marginTop: 10 }}>{r.numPedidos} pedidos · {r.numClientesDistintos} clientes distintos</div>
+      </Tarjeta>
+
+      <Titulo>Ventas por variedad</Titulo>
+      <Tarjeta>
+        {variedades.length === 0 && <div style={{ fontSize: 12, color: C.bark }}>Sin ventas todavía.</div>}
+        {variedades.length > 0 && (
+          <table><thead><tr><th>Variedad</th><th>Kg</th><th>Ingreso</th><th>Mg Neto</th></tr></thead>
+            <tbody>{variedades.map(([k, d]) => <tr key={k}><td>{k}</td><td>{fmtKg(d.kg)}</td><td>{fmtCOP(d.ingreso)}</td><td>{fmtCOP(d.margenNeto)}</td></tr>)}</tbody>
+          </table>
+        )}
+      </Tarjeta>
+
+      <Titulo>Ventas por mes</Titulo>
+      <Tarjeta>
+        {meses.length === 0 && <div style={{ fontSize: 12, color: C.bark }}>Sin ventas todavía.</div>}
+        {meses.length > 0 && (
+          <table><thead><tr><th>Mes</th><th>Kg</th><th>Ingreso</th></tr></thead>
+            <tbody>{meses.map(([k, d]) => <tr key={k}><td>{k}</td><td>{fmtKg(d.kg)}</td><td>{fmtCOP(d.ingreso)}</td></tr>)}</tbody>
+          </table>
+        )}
+      </Tarjeta>
+
+      <Titulo>Ventas por cliente</Titulo>
+      <Tarjeta>
+        {clientesResumen.length === 0 && <div style={{ fontSize: 12, color: C.bark }}>Sin ventas todavía.</div>}
+        {clientesResumen.length > 0 && (
+          <table><thead><tr><th>Cliente</th><th>Kg</th><th>Ingreso</th></tr></thead>
+            <tbody>{clientesResumen.map(([id, d]) => <tr key={id}><td>{d.nombreCliente || id}</td><td>{fmtKg(d.kg)}</td><td>{fmtCOP(d.ingreso)}</td></tr>)}</tbody>
+          </table>
+        )}
+      </Tarjeta>
+      <Boton onClick={() => descargarExcel("/comercializacion/mis-datos/excel", code, `comercializacion-${code}.xlsx`)} color={C.bark}>📥 Descargar mi libro Excel</Boton>
+    </div>
+  );
+}
+
+// ── TAB 5: PARÁMETROS ──────────────────────────────────────────────────────────
+function Parametros({ code }) {
+  const [p, setP] = useState(null);
+  const [mensaje, setMensaje] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  useEffect(() => { apiGet("/comercializacion/parametros", code).then(setP); }, []);
+
+  const guardar = async () => {
+    setGuardando(true); setMensaje("");
+    try { setP(await apiPut("/comercializacion/parametros", code, p)); setMensaje("✅ Guardado"); }
+    catch (e) { setMensaje("⚠️ " + e.message); }
+    finally { setGuardando(false); }
+  };
+  if (!p) return <div style={{ padding: 20, color: C.bark }}>Cargando…</div>;
+  const setRend = (k, v) => setP(x => ({ ...x, rendimientos: { ...x.rendimientos, [k]: v } }));
+  const setCoste = (k, v) => setP(x => ({ ...x, costesReferenciaPorEtapa: { ...x.costesReferenciaPorEtapa, [k]: v } }));
+
+  return (
+    <div className="seccion" style={{ padding: "12px 16px 100px" }}>
+      <Tarjeta style={{ background: C.fog }}>
+        <div style={{ fontSize: 12, color: C.roast, lineHeight: 1.5 }}>
+          Estos valores tienen defaults razonables para Huila. Solo cámbialos si conoces mejor tu costo real.
+        </div>
+      </Tarjeta>
+      <Titulo>Tipos de cambio</Titulo>
+      <Tarjeta>
+        <Campo label="Tasa COP/USD" tipo="number" value={p.tasaCambioUSD} onChange={v => setP(x => ({ ...x, tasaCambioUSD: v }))} />
+        <Campo label="Tasa COP/EUR" tipo="number" value={p.tasaCambioEUR} onChange={v => setP(x => ({ ...x, tasaCambioEUR: v }))} />
+      </Tarjeta>
+      <Titulo>Rendimientos por etapa (mermas)</Titulo>
+      <Tarjeta>
+        <Campo label="Cereza → Café en baba" tipo="number" value={p.rendimientos?.cerezaABaba} onChange={v => setRend("cerezaABaba", v)} />
+        <Campo label="Baba → Pergamino seco" tipo="number" value={p.rendimientos?.babaAPergamino} onChange={v => setRend("babaAPergamino", v)} />
+        <Campo label="Pergamino → Excelso" tipo="number" value={p.rendimientos?.pergaminoAExcelso} onChange={v => setRend("pergaminoAExcelso", v)} />
+        <Campo label="Excelso → Tostado" tipo="number" value={p.rendimientos?.excelsoATostado} onChange={v => setRend("excelsoATostado", v)} />
+      </Tarjeta>
+      <Titulo>Costes de referencia por etapa (COP/kg salida)</Titulo>
+      <Tarjeta>
+        {["E1", "E2", "E3", "E4", "E5", "E6"].map(e => (
+          <Campo key={e} label={e} tipo="number" value={p.costesReferenciaPorEtapa?.[e]} onChange={v => setCoste(e, v)} />
+        ))}
+      </Tarjeta>
+      {mensaje && <div style={{ fontSize: 12, color: C.roast, margin: "10px 0" }}>{mensaje}</div>}
+      <Boton onClick={guardar} disabled={guardando} color={C.leaf}>{guardando ? "Guardando…" : "💾 Guardar"}</Boton>
+    </div>
+  );
+}
+
+// ── PANEL DEL FORMADOR ─────────────────────────────────────────────────────────
+function PanelFormador({ code, onLogout }) {
+  const [datos, setDatos] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  useEffect(() => {
+    apiGet("/admin/comercializacion/consolidado", code).then(setDatos).catch(() => setDatos({ porProductor: [] })).finally(() => setCargando(false));
+  }, []);
+  if (cargando) return <div style={{ padding: 20, color: C.bark }}>Cargando…</div>;
+  return (
+    <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: C.cream }}>
+      <div className="header-safe" style={{ background: C.earth, padding: "18px 16px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: C.cream }}>Panel del Formador</div>
+          <div style={{ fontSize: 11, color: C.clay }}>Comercialización — consolidado de la comunidad</div>
+        </div>
+        <button onClick={onLogout} style={{ background: "none", border: "none", color: C.clay, fontSize: 12 }}>Salir</button>
+      </div>
+      <div style={{ padding: 16 }}>
+        <Tarjeta style={{ background: C.earth }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 10 }}>
+            <KPI label="Total kg vendidos" valor={fmtKg(datos.totalKg)} />
+            <KPI label="Ingreso total" valor={fmtCOP(datos.ingresoTotal)} />
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <KPI label="Margen producto" valor={`${fmtCOP(datos.margenProductoTotal)} (${fmtPct(datos.margenProductoPct)})`} />
+            <KPI label="Margen neto" valor={`${fmtCOP(datos.margenNetoTotal)} (${fmtPct(datos.margenNetoPct)})`} />
+          </div>
+          <div style={{ fontSize: 12, color: C.clay, marginTop: 10 }}>{datos.numProductoresConVentas} productores con ventas registradas</div>
+        </Tarjeta>
+
+        <Titulo>Por productor</Titulo>
+        {(datos.porProductor || []).length === 0 && <div style={{ fontSize: 13, color: C.bark }}>Todavía nadie ha registrado ventas.</div>}
+        {(datos.porProductor || []).map(p => (
+          <Tarjeta key={p.codigo}>
+            <div style={{ fontWeight: 800, color: C.earth, fontSize: 14 }}>{p.codigo}</div>
+            <div style={{ fontSize: 12, color: C.roast }}>{fmtKg(p.totalKg)} vendidos · {fmtCOP(p.ingresoTotal)}</div>
+            <div style={{ fontSize: 11, color: C.bark }}>Margen neto: {fmtCOP(p.margenNetoTotal)} · {p.numPedidos} pedidos</div>
+          </Tarjeta>
+        ))}
+        <Boton onClick={() => descargarExcel("/admin/comercializacion/excel", code, `comercializacion-consolidado-${new Date().toISOString().slice(0,10)}.xlsx`)} color={C.bark}>
+          📥 Descargar consolidado Excel (para Operativo_Cafeteros)
+        </Boton>
+      </div>
+    </div>
+  );
+}
+
+// ── APP CAFICULTOR (tabs) ──────────────────────────────────────────────────────
+function AppCaficultor({ code, onLogout }) {
+  const [tab, setTab] = useState("finca");
+  const [listasRef, setListasRef] = useState(null);
+  useEffect(() => { apiGet("/comercializacion/listas-ref", code).then(setListasRef).catch(() => setListasRef({})); }, []);
+
+  const TABS = [
+    { id: "finca", label: "Mi finca", icono: "🌿" },
+    { id: "clientes", label: "Clientes", icono: "👥" },
+    { id: "ventas", label: "Ventas", icono: "📊" },
+    { id: "resumen", label: "Resumen", icono: "📈" },
+    { id: "parametros", label: "Parámetros", icono: "⚙️" },
+  ];
+
+  return (
+    <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: C.cream, display: "flex", flexDirection: "column" }}>
+      <div className="header-safe" style={{ background: C.earth, padding: "18px 16px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: C.cream }}>Comercialización</div>
+          <div style={{ fontSize: 11, color: C.clay }}>{code}</div>
+        </div>
+        <button onClick={onLogout} style={{ background: "none", border: "none", color: C.clay, fontSize: 12 }}>Salir</button>
+      </div>
+      <div className="scroll-area" style={{ flex: 1 }}>
+        {!listasRef ? <div style={{ padding: 20, color: C.bark }}>Cargando…</div> : (
+          tab === "finca" ? <MiFinca code={code} listasRef={listasRef} /> :
+          tab === "clientes" ? <MisClientes code={code} listasRef={listasRef} /> :
+          tab === "ventas" ? <MisVentas code={code} listasRef={listasRef} /> :
+          tab === "resumen" ? <MiResumen code={code} /> :
+          <Parametros code={code} />
+        )}
+      </div>
+      <div className="nav-safe" style={{ display: "flex", background: C.white, borderTop: `1px solid ${C.fog}` }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            flex: 1, background: "none", border: "none", padding: "8px 0",
+            color: tab === t.id ? C.roast : C.bark, fontWeight: tab === t.id ? 900 : 600,
+          }}>
+            <div style={{ fontSize: 17 }}>{t.icono}</div>
+            <div style={{ fontSize: 10 }}>{t.label}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── APP raíz ───────────────────────────────────────────────────────────────────
+function App() {
+  const [code, setCode] = useState(() => localStorage.getItem("ccaf_code") || "");
+  const [who, setWho] = useState(null);
+  const [verificando, setVerificando] = useState(false);
+  const [errorReautenticacion, setErrorReautenticacion] = useState("");
+
+  useEffect(() => {
+    if (!code) { setWho(null); return; }
+    setVerificando(true);
+    apiGet("/whoami", code).then(setWho).catch(e => {
+      setWho(null);
+      if (e.message === "Contraseña incorrecta") {
+        setCurrentPassword("");
+        setErrorReautenticacion("Tu contraseña no coincide (puede que el formador la haya cambiado). Vuelve a entrar.");
+      } else {
+        localStorage.removeItem("ccaf_code");
+        localStorage.removeItem("ccaf_password");
+        setCode("");
+      }
+    }).finally(() => setVerificando(false));
+  }, [code]);
+
+  const onLogin = (w) => { localStorage.setItem("ccaf_code", w.code); setCode(w.code); setWho(w); setErrorReautenticacion(""); };
+  const onLogout = () => { localStorage.removeItem("ccaf_code"); localStorage.removeItem("ccaf_password"); setCurrentPassword(""); setCode(""); setWho(null); setErrorReautenticacion(""); };
+
+  if (!code || errorReautenticacion) return <Login onLogin={onLogin} codigoInicial={code} errorInicial={errorReautenticacion} />;
+  if (verificando || !who) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: C.bark }}>Cargando…</div>;
+
+  return who.role === "formador"
+    ? <PanelFormador code={who.code} onLogout={onLogout} />
+    : <AppCaficultor code={who.code} onLogout={onLogout} />;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
