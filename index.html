@@ -13,6 +13,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     html, body { height: 100%; overscroll-behavior: none; }
@@ -26,7 +27,6 @@
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     .seccion { animation: fadeIn 0.25s ease; }
     .header-safe { padding-top: max(18px, env(safe-area-inset-top)); }
-    .nav-safe { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 5px 4px; font-size: 11px; }
   </style>
@@ -75,6 +75,55 @@ function descargarExcel(ruta, code, nombreSugerido) {
       a.href = url; a.download = nombreSugerido; document.body.appendChild(a); a.click();
       a.remove(); URL.revokeObjectURL(url);
     });
+}
+
+// Resumen en Word — misma librería (docx por CDN) y estilo que usan Finanzas
+// Cafeteros y Plan de Mejora de Calidad para sus descargas.
+async function descargarResumenWord(code, r) {
+  try {
+    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle, ShadingType, VerticalAlign } = window.docx;
+    const fecha = new Date().toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric" });
+    const COL = { earth: "2C1810", roast: "5C3A21", bark: "8B5E3C", fog: "EDE4D0", borde: "DDD5C4" };
+    const sinBordes = { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } };
+    const bordeFino = { style: BorderStyle.SINGLE, size: 4, color: COL.borde };
+    const conBordes = { top: bordeFino, bottom: bordeFino, left: bordeFino, right: bordeFino };
+    const celda = (texto, opts = {}) => new TableCell({
+      borders: opts.sinBorde ? sinBordes : conBordes,
+      shading: opts.bg ? { type: ShadingType.SOLID, color: opts.bg } : undefined,
+      verticalAlign: VerticalAlign.CENTER,
+      margins: { top: 60, bottom: 60, left: 80, right: 80 },
+      children: [new Paragraph({ children: [new TextRun({ text: texto ?? "", bold: !!opts.bold, color: opts.color, size: opts.size || 18 })] })],
+    });
+    const tituloSeccion = texto => new Paragraph({ spacing: { after: 80, before: 200 }, children: [new TextRun({ text: texto.toUpperCase(), bold: true, size: 18, color: COL.roast })] });
+    const tabla = (cab, filas) => new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
+      new TableRow({ children: cab.map(c => celda(c, { bold: true, bg: COL.fog, color: COL.roast })) }),
+      ...(filas.length ? filas.map(f => new TableRow({ children: f.map(v => celda(String(v))) })) : [new TableRow({ children: cab.map(() => celda("—")) })]),
+    ] });
+
+    const variedades = Object.entries(r.porVariedad || {}).filter(([, d]) => d.kg > 0);
+    const meses = Object.entries(r.porMes || {}).filter(([, d]) => d.kg > 0);
+    const clientesResumen = Object.entries(r.porCliente || {});
+
+    const doc = new Document({ sections: [{ children: [
+      new Paragraph({ children: [new TextRun({ text: "📦 ", size: 32 }), new TextRun({ text: "Resumen de Comercialización de Café", bold: true, size: 28, color: COL.earth })] }),
+      new Paragraph({ spacing: { after: 200 }, children: [new TextRun({ text: `Código ${code} · Generado el ${fecha}`, size: 18, color: COL.bark })] }),
+      tituloSeccion("Totales"),
+      tabla(["Total kg", "Ingreso total", "Margen producto", "Margen neto", "Pedidos"], [[
+        fmtKg(r.totalKg), fmtCOP(r.ingresoTotal), `${fmtCOP(r.margenProductoTotal)} (${fmtPct(r.margenProductoPct)})`, `${fmtCOP(r.margenNetoTotal)} (${fmtPct(r.margenNetoPct)})`, r.numPedidos,
+      ]]),
+      tituloSeccion("Por variedad"),
+      tabla(["Variedad", "Kg", "Ingreso", "Margen neto"], variedades.map(([k, d]) => [k, fmtKg(d.kg), fmtCOP(d.ingreso), fmtCOP(d.margenNeto)])),
+      tituloSeccion("Por mes"),
+      tabla(["Mes", "Kg", "Ingreso"], meses.map(([k, d]) => [k, fmtKg(d.kg), fmtCOP(d.ingreso)])),
+      tituloSeccion("Por cliente"),
+      tabla(["Cliente", "Kg", "Ingreso"], clientesResumen.map(([id, d]) => [d.nombreCliente || id, fmtKg(d.kg), fmtCOP(d.ingreso)])),
+    ] }] });
+    const blob = await Packer.toBlob(doc);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `resumen-comercializacion-${code}-${new Date().toISOString().slice(0,10)}.docx`; a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { window.alert("No se pudo generar el documento Word: " + (e.message || e)); }
 }
 
 const C = {
@@ -182,62 +231,44 @@ function Login({ onLogin, codigoInicial, errorInicial }) {
   );
 }
 
-// ── TAB 1: MI FINCA Y PRODUCCIÓN ───────────────────────────────────────────────
-function MiFinca({ code, listasRef }) {
-  const [finca, setFinca] = useState(null);
+// ── TAB: MIS DATOS (identidad mínima para facturar, se rellena una sola vez) ──
+function MisDatos({ code }) {
+  const [datos, setDatos] = useState(null);
   const [mensaje, setMensaje] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  useEffect(() => { apiGet("/comercializacion/finca", code).then(setFinca); }, []);
+  useEffect(() => { apiGet("/comercializacion/finca", code).then(setDatos); }, []);
 
   const guardar = async () => {
     setGuardando(true); setMensaje("");
-    try { setFinca(await apiPut("/comercializacion/finca", code, finca)); setMensaje("✅ Guardado"); }
+    try { setDatos(await apiPut("/comercializacion/finca", code, datos)); setMensaje("✅ Guardado"); }
     catch (e) { setMensaje("⚠️ " + e.message); }
     finally { setGuardando(false); }
   };
-  const campo = (k, v) => setFinca(f => ({ ...f, [k]: v }));
-  const filaProd = (i, k, v) => setFinca(f => { const p = [...f.produccion]; p[i] = { ...p[i], [k]: v }; return { ...f, produccion: p }; });
-  const addFila = () => setFinca(f => ({ ...f, produccion: [...(f.produccion || []), { variedad: "", kgCerezaCosechados: "", etapaHabitualVenta: "", notas: "" }] }));
-  const delFila = (i) => setFinca(f => ({ ...f, produccion: f.produccion.filter((_, idx) => idx !== i) }));
+  const campo = (k, v) => setDatos(d => ({ ...d, [k]: v }));
 
-  if (!finca) return <div style={{ padding: 20, color: C.bark }}>Cargando…</div>;
-  const variedades = (listasRef.variedades || []).map(v => ({ value: v.nombre, label: v.nombre }));
-  const etapas = (listasRef.etapas || []).map(e => ({ value: e.id, label: `${e.id} — ${e.label}` }));
+  if (!datos) return <div style={{ padding: 20, color: C.bark }}>Cargando…</div>;
+  const tiposPersona = [
+    { value: "natural", label: "Persona natural / Autónomo" },
+    { value: "juridica", label: "Persona jurídica / Empresa" },
+  ];
 
   return (
-    <div className="seccion" style={{ padding: "12px 16px 100px" }}>
-      <Tarjeta>
-        <Campo label="Nombre de la finca" value={finca.nombreFinca} onChange={v => campo("nombreFinca", v)} />
-        <Campo label="Vereda" value={finca.vereda} onChange={v => campo("vereda", v)} />
-        <div style={{ display: "flex", gap: 8 }}>
-          <div style={{ flex: 1 }}><Campo label="Municipio" value={finca.municipio} onChange={v => campo("municipio", v)} /></div>
-          <div style={{ flex: 1 }}><Campo label="Departamento" value={finca.departamento} onChange={v => campo("departamento", v)} /></div>
+    <div className="seccion" style={{ padding: "12px 16px 40px" }}>
+      <Tarjeta style={{ background: C.fog }}>
+        <div style={{ fontSize: 12, color: C.roast, lineHeight: 1.5 }}>
+          Son tus datos como vendedor: los mínimos que se necesitan para poder facturar tus ventas. Se rellenan una sola vez — no hace falta repetirlos en cada venta.
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <div style={{ flex: 1 }}><Campo label="Altitud (m s.n.m.)" tipo="number" value={finca.altitud} onChange={v => campo("altitud", v)} /></div>
-          <div style={{ flex: 1 }}><Campo label="Área (ha)" tipo="number" value={finca.areaHa} onChange={v => campo("areaHa", v)} /></div>
-        </div>
-        <Campo label="Teléfono / WhatsApp" value={finca.telefono} onChange={v => campo("telefono", v)} />
-        <Campo label="Certificaciones activas" value={finca.certificaciones} onChange={v => campo("certificaciones", v)} placeholder="Ej. Orgánico, 4C, Rainforest…" />
       </Tarjeta>
-
-      <Titulo>Producción por variedad — temporada actual</Titulo>
-      {(finca.produccion || []).map((p, i) => (
-        <Tarjeta key={i}>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button onClick={() => delFila(i)} style={{ background: "none", border: "none", color: C.alert, fontSize: 12 }}>✕ quitar</button>
-          </div>
-          <Campo label="Variedad" value={p.variedad} onChange={v => filaProd(i, "variedad", v)} opciones={variedades} />
-          <Campo label="Kg cereza cosechados" tipo="number" value={p.kgCerezaCosechados} onChange={v => filaProd(i, "kgCerezaCosechados", v)} />
-          <Campo label="Etapa habitual de venta" value={p.etapaHabitualVenta} onChange={v => filaProd(i, "etapaHabitualVenta", v)} opciones={etapas} />
-          <Campo label="Notas" value={p.notas} onChange={v => filaProd(i, "notas", v)} />
-        </Tarjeta>
-      ))}
-      <Boton onClick={addFila} color={C.bark} small full={false}>+ Añadir variedad</Boton>
-
+      <Tarjeta>
+        <Campo label="Nombre / Razón social" value={datos.nombreVendedor} onChange={v => campo("nombreVendedor", v)} />
+        <Campo label="Tipo" value={datos.tipoPersona} onChange={v => campo("tipoPersona", v)} opciones={tiposPersona} />
+        <Campo label="Identificador fiscal (NIT o cédula)" value={datos.identificadorFiscal} onChange={v => campo("identificadorFiscal", v)} />
+        <Campo label="Dirección" value={datos.direccion} onChange={v => campo("direccion", v)} />
+        <Campo label="Teléfono / WhatsApp" value={datos.telefono} onChange={v => campo("telefono", v)} />
+      </Tarjeta>
       {mensaje && <div style={{ fontSize: 12, color: C.roast, margin: "12px 0" }}>{mensaje}</div>}
-      <div style={{ marginTop: 16 }}><Boton onClick={guardar} disabled={guardando} color={C.leaf}>{guardando ? "Guardando…" : "💾 Guardar"}</Boton></div>
+      <Boton onClick={guardar} disabled={guardando} color={C.leaf}>{guardando ? "Guardando…" : "💾 Guardar"}</Boton>
     </div>
   );
 }
@@ -425,11 +456,13 @@ function MiResumen({ code }) {
         )}
       </Tarjeta>
       <Boton onClick={() => descargarExcel("/comercializacion/mis-datos/excel", code, `comercializacion-${code}.xlsx`)} color={C.bark}>📥 Descargar mi libro Excel</Boton>
+      <div style={{ height: 8 }} />
+      <Boton onClick={() => descargarResumenWord(code, r)} color={C.roast}>📄 Descargar resumen en Word</Boton>
     </div>
   );
 }
 
-// ── TAB 5: PARÁMETROS ──────────────────────────────────────────────────────────
+// ── TAB: PARÁMETROS ─────────────────────────────────────────────────────────────
 function Parametros({ code }) {
   const [p, setP] = useState(null);
   const [mensaje, setMensaje] = useState("");
@@ -526,46 +559,53 @@ function PanelFormador({ code, onLogout }) {
 
 // ── APP CAFICULTOR (tabs) ──────────────────────────────────────────────────────
 function AppCaficultor({ code, onLogout }) {
-  const [tab, setTab] = useState("finca");
+  const [tab, setTab] = useState("ventas");
   const [listasRef, setListasRef] = useState(null);
   useEffect(() => { apiGet("/comercializacion/listas-ref", code).then(setListasRef).catch(() => setListasRef({})); }, []);
 
+  // "Ventas" va primero y es la pestaña con la que se entra: el día a día es
+  // registrar venta por venta. "Mis datos" (identidad fiscal) se rellena una
+  // sola vez y queda relegada a la cuarta posición.
   const TABS = [
-    { id: "finca", label: "Mi finca", icono: "🌿" },
+    { id: "ventas", label: "Ventas", icono: "🧾" },
     { id: "clientes", label: "Clientes", icono: "👥" },
-    { id: "ventas", label: "Ventas", icono: "📊" },
+    { id: "datos", label: "Mis datos", icono: "🪪" },
     { id: "resumen", label: "Resumen", icono: "📈" },
     { id: "parametros", label: "Parámetros", icono: "⚙️" },
   ];
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: C.cream, display: "flex", flexDirection: "column" }}>
-      <div className="header-safe" style={{ background: C.earth, padding: "18px 16px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 900, color: C.cream }}>Comercialización</div>
-          <div style={{ fontSize: 11, color: C.clay }}>{code}</div>
+      {/* Cabecera + navegación fijas arriba (sticky), siempre visibles sin scroll */}
+      <div style={{ position: "sticky", top: 0, zIndex: 10 }}>
+        <div className="header-safe" style={{ background: C.earth, padding: "18px 16px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: C.cream }}>Comercialización</div>
+            <div style={{ fontSize: 11, color: C.clay }}>{code}</div>
+          </div>
+          <button onClick={onLogout} style={{ background: "none", border: "none", color: C.clay, fontSize: 12 }}>Salir</button>
         </div>
-        <button onClick={onLogout} style={{ background: "none", border: "none", color: C.clay, fontSize: 12 }}>Salir</button>
+        <div style={{ display: "flex", background: C.white, borderBottom: `1px solid ${C.fog}` }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              flex: 1, background: "none", border: "none", padding: "8px 0",
+              color: tab === t.id ? C.roast : C.bark, fontWeight: tab === t.id ? 900 : 600,
+              borderBottom: `3px solid ${tab === t.id ? C.roast : "transparent"}`,
+            }}>
+              <div style={{ fontSize: 17 }}>{t.icono}</div>
+              <div style={{ fontSize: 10 }}>{t.label}</div>
+            </button>
+          ))}
+        </div>
       </div>
       <div className="scroll-area" style={{ flex: 1 }}>
         {!listasRef ? <div style={{ padding: 20, color: C.bark }}>Cargando…</div> : (
-          tab === "finca" ? <MiFinca code={code} listasRef={listasRef} /> :
-          tab === "clientes" ? <MisClientes code={code} listasRef={listasRef} /> :
           tab === "ventas" ? <MisVentas code={code} listasRef={listasRef} /> :
+          tab === "clientes" ? <MisClientes code={code} listasRef={listasRef} /> :
+          tab === "datos" ? <MisDatos code={code} /> :
           tab === "resumen" ? <MiResumen code={code} /> :
           <Parametros code={code} />
         )}
-      </div>
-      <div className="nav-safe" style={{ display: "flex", background: C.white, borderTop: `1px solid ${C.fog}` }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex: 1, background: "none", border: "none", padding: "8px 0",
-            color: tab === t.id ? C.roast : C.bark, fontWeight: tab === t.id ? 900 : 600,
-          }}>
-            <div style={{ fontSize: 17 }}>{t.icono}</div>
-            <div style={{ fontSize: 10 }}>{t.label}</div>
-          </button>
-        ))}
       </div>
     </div>
   );
