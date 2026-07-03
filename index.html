@@ -9,6 +9,8 @@
   <meta name="apple-mobile-web-app-title" content="Comercialización" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="description" content="Comercialización de café para productores de San Adolfo, Huila · Ubuntu Café" />
+  <link rel="manifest" href="/comercializacion-cafe/manifest.json" />
+  <link rel="apple-touch-icon" href="/comercializacion-cafe/icons/icon-192.png" />
   <title>Comercialización de Café · Ubuntu Café</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -29,6 +31,13 @@
     .header-safe { padding-top: max(18px, env(safe-area-inset-top)); }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 5px 4px; font-size: 11px; }
+    #ccaf-offline-banner { display:none; position:fixed; top:0; left:0; right:0; z-index:9999;
+      background:#b91c1c; color:#fff; text-align:center; padding:8px 16px; font-size:13px; font-weight:600; }
+    #ccaf-offline-banner.visible { display:block; }
+    #ccaf-pending-badge { display:none; position:fixed; bottom:20px; right:16px; z-index:9998;
+      background:#ea580c; color:#fff; border-radius:50px; padding:8px 14px; font-size:13px; font-weight:700;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3); cursor:pointer; }
+    #ccaf-pending-badge.visible { display:block; }
   </style>
 </head>
 <body>
@@ -135,6 +144,7 @@ const C = {
 const fmtCOP = n => (n == null || isNaN(n)) ? "—" : Math.round(n).toLocaleString("es-CO") + " COP";
 const fmtKg = n => (n == null || isNaN(n)) ? "—" : Number(n).toLocaleString("es-CO") + " kg";
 const fmtPct = n => (n == null || isNaN(n)) ? "—" : n.toLocaleString("es-CO") + "%";
+const fmtFecha = s => { if (!s) return "—"; const d = new Date(s); return isNaN(d) ? s : d.toLocaleDateString("es-CO"); };
 
 // ── COMPONENTES BASE ──────────────────────────────────────────────────────────
 function Campo({ label, value, onChange, tipo = "text", placeholder, opciones }) {
@@ -338,6 +348,7 @@ function MisVentas({ code, listasRef }) {
   const [mostrarForm, setMostrarForm] = useState(false);
   const vacio = { fecha: "", variedad: "", clienteId: "", etapa: "", cantidad: "", precio: "", moneda: "COP", costeLogistico: 0 };
   const [form, setForm] = useState(vacio);
+  const [editandoId, setEditandoId] = useState(null);
   const [mensaje, setMensaje] = useState("");
 
   const cargar = () => Promise.all([
@@ -348,9 +359,19 @@ function MisVentas({ code, listasRef }) {
 
   const agregar = async () => {
     if (!form.cantidad || !form.precio || !form.clienteId || !form.etapa) { setMensaje("⚠️ Completa cantidad, precio, cliente y etapa"); return; }
-    try { await apiPost("/comercializacion/ventas", code, form); setForm(vacio); setMostrarForm(false); cargar(); }
+    try {
+      if (editandoId) await apiPut(`/comercializacion/ventas/${editandoId}`, code, form);
+      else await apiPost("/comercializacion/ventas", code, form);
+      setForm(vacio); setEditandoId(null); setMostrarForm(false); cargar();
+    }
     catch (e) { setMensaje("⚠️ " + e.message); }
   };
+  const editar = (v) => {
+    setForm({ fecha: v.fecha || "", variedad: v.variedad || "", clienteId: v.clienteId || "", etapa: v.etapa || "", cantidad: v.cantidad || "", precio: v.precio || "", moneda: v.moneda || "COP", costeLogistico: v.costeLogistico || 0 });
+    setEditandoId(v.id);
+    setMostrarForm(true);
+  };
+  const cancelarForm = () => { setForm(vacio); setEditandoId(null); setMostrarForm(false); };
   const borrar = async (id) => { if (!confirm("¿Borrar esta venta?")) return; await apiDelete(`/comercializacion/ventas/${id}`, code); cargar(); };
 
   const variedades = (listasRef.variedades || []).map(v => ({ value: v.nombre, label: v.nombre }));
@@ -361,9 +382,10 @@ function MisVentas({ code, listasRef }) {
   if (cargando) return <div style={{ padding: 20, color: C.bark }}>Cargando…</div>;
   return (
     <div className="seccion" style={{ padding: "12px 16px 100px" }}>
-      <Boton onClick={() => setMostrarForm(s => !s)} small full={false}>{mostrarForm ? "Cancelar" : "+ Nueva venta"}</Boton>
+      <Boton onClick={() => mostrarForm ? cancelarForm() : setMostrarForm(true)} small full={false}>{mostrarForm ? "Cancelar" : "+ Nueva venta"}</Boton>
       {mostrarForm && (
         <Tarjeta style={{ marginTop: 10 }}>
+          {editandoId && <div style={{ fontSize: 12, color: C.roast, marginBottom: 8 }}>✎ Editando venta existente</div>}
           {clientes.length === 0 && <div style={{ fontSize: 12, color: C.warn, marginBottom: 8 }}>⚠️ Primero añade un cliente en la pestaña "Mis clientes".</div>}
           <Campo label="Fecha" tipo="date" value={form.fecha} onChange={v => setForm(f => ({ ...f, fecha: v }))} />
           <Campo label="Variedad" value={form.variedad} onChange={v => setForm(f => ({ ...f, variedad: v }))} opciones={variedades} />
@@ -375,7 +397,7 @@ function MisVentas({ code, listasRef }) {
             <div style={{ flex: 1 }}><Campo label="Moneda" value={form.moneda} onChange={v => setForm(f => ({ ...f, moneda: v }))} opciones={monedas} /></div>
           </div>
           <Campo label="Coste logístico (COP, opcional)" tipo="number" value={form.costeLogistico} onChange={v => setForm(f => ({ ...f, costeLogistico: v }))} />
-          <Boton onClick={agregar} color={C.leaf}>Guardar venta</Boton>
+          <Boton onClick={agregar} color={C.leaf}>{editandoId ? "Guardar cambios" : "Guardar venta"}</Boton>
         </Tarjeta>
       )}
       {mensaje && <div style={{ fontSize: 12, color: C.roast, margin: "10px 0" }}>{mensaje}</div>}
@@ -385,10 +407,14 @@ function MisVentas({ code, listasRef }) {
         <Tarjeta key={v.id} style={{ borderLeft: `4px solid ${v.margenNetoCOP >= 0 ? C.leaf : C.alert}` }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.earth }}>{v.nombreCliente || "Sin cliente"}</div>
-            <button onClick={() => borrar(v.id)} style={{ background: "none", border: "none", color: C.bark, fontSize: 12 }}>✕</button>
+            <div>
+              <button onClick={() => editar(v)} style={{ background: "none", border: "none", color: C.bark, fontSize: 12, marginRight: 8 }}>✎</button>
+              <button onClick={() => borrar(v.id)} style={{ background: "none", border: "none", color: C.bark, fontSize: 12 }}>✕</button>
+            </div>
           </div>
           <div style={{ fontSize: 12, color: C.roast, marginTop: 4 }}>{v.fecha || "Sin fecha"} · {v.variedad} · {v.etapa} · {fmtKg(v.cantidad)} a {v.precio} {v.moneda}/kg</div>
           <div style={{ fontSize: 12, color: C.bark, marginTop: 2 }}>Ingreso: {fmtCOP(v.ingresoTotalCOP)} · Margen producto: {fmtCOP(v.margenProductoCOP)} ({fmtPct(v.margenProductoPct)}) · Margen neto: {fmtCOP(v.margenNetoCOP)} ({fmtPct(v.margenNetoPct)})</div>
+          {(v.registradoEn || v.actualizadoEn) && <div style={{ fontSize: 10, color: C.fog, marginTop: 4 }}>{v.actualizadoEn ? `Editado ${fmtFecha(v.actualizadoEn)}` : `Registrado ${fmtFecha(v.registradoEn)}`}</div>}
         </Tarjeta>
       ))}
     </div>
@@ -646,6 +672,67 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+<!-- Offline banner y badge -->
+<div id="ccaf-offline-banner">⚠️ Sin conexión — los cambios se guardarán y sincronizarán al volver la señal</div>
+<div id="ccaf-pending-badge" title="Cambios pendientes de sincronizar — toca para sincronizar ahora"></div>
+
+<script>
+(function initSW() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/comercializacion-cafe/sw.js', { scope: '/comercializacion-cafe/' })
+    .then(function(reg) {
+      navigator.serviceWorker.controller &&
+        navigator.serviceWorker.controller.postMessage({ type: 'CCAF_GET_COUNT' });
+      window.addEventListener('online', function() {
+        _ccafOfflineBanner(false);
+        if (reg.sync) reg.sync.register('ccaf-sync').catch(function(){});
+        else navigator.serviceWorker.controller &&
+          navigator.serviceWorker.controller.postMessage({ type: 'CCAF_SYNC_NOW' });
+      });
+      window.addEventListener('offline', function() { _ccafOfflineBanner(true); });
+      if (!navigator.onLine) _ccafOfflineBanner(true);
+    });
+  navigator.serviceWorker.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'CCAF_QUEUE') _ccafPendingBadge(e.data.count);
+    if (e.data && e.data.type === 'CCAF_SYNCED') {
+      _ccafPendingBadge(0);
+      _ccafToast('✅ ' + e.data.count + ' cambio' + (e.data.count > 1 ? 's' : '') + ' sincronizado' + (e.data.count > 1 ? 's' : ''));
+    }
+  });
+})();
+
+function _ccafOfflineBanner(show) {
+  var el = document.getElementById('ccaf-offline-banner');
+  if (el) el.classList.toggle('visible', show);
+}
+function _ccafPendingBadge(count) {
+  var el = document.getElementById('ccaf-pending-badge');
+  if (!el) return;
+  if (count > 0) {
+    el.textContent = '⏳ ' + count + ' pendiente' + (count > 1 ? 's' : '');
+    el.classList.add('visible');
+    el.onclick = function() {
+      if (navigator.serviceWorker.controller)
+        navigator.serviceWorker.controller.postMessage({ type: 'CCAF_SYNC_NOW' });
+    };
+  } else {
+    el.classList.remove('visible');
+  }
+}
+function _ccafToast(msg) {
+  var t = document.createElement('div');
+  t.textContent = msg;
+  Object.assign(t.style, {
+    position:'fixed', bottom:'70px', left:'50%', transform:'translateX(-50%)',
+    background:'#166534', color:'#fff', padding:'10px 20px', borderRadius:'8px',
+    fontSize:'14px', fontWeight:'600', zIndex:'9999', pointerEvents:'none',
+    boxShadow:'0 2px 8px rgba(0,0,0,0.3)', whiteSpace:'nowrap'
+  });
+  document.body.appendChild(t);
+  setTimeout(function() { t.remove(); }, 3500);
+}
 </script>
 </body>
 </html>
