@@ -9,7 +9,7 @@ graph LR
     end
     subgraph "Backend existente (finanzas-cafeteros) — EXTENDER, no recrear"
         B[app.js Express<br/>+ rutas /api/comercializacion/*<br/>+ rutas /api/admin/comercializacion/*]
-        D[(data/comercializacion/<br/>finca/<codigo>.json<br/>clientes/<codigo>.json<br/>ventas/<codigo>.json<br/>parametros/<codigo>.json)]
+        D[(data/users/<codigo>.json → finca — Ficha de Productor compartida<br/>data/comercializacion/<br/>clientes/<codigo>.json<br/>ventas/<codigo>.json<br/>parametros/<codigo>.json)]
     end
     subgraph "Apps hermanas (sin tocar)"
         DX[diagnostico-finca-cafe]
@@ -38,7 +38,7 @@ graph LR
 | Capa | Tecnología | Justificación |
 |------|------------|----------------|
 | Servidor | Express (ya existe en `finanzas-cafeteros/app.js`) | Ya soporta auth por código (`X-Code` + `X-Password`), CORS y el patrón de rutas que se replica para comercialización. |
-| Persistencia | Archivos JSON en `data/comercializacion/<tipo>/<codigo>.json` (por confirmar estructura exacta) | Cero infraestructura nueva; consistente con el patrón de `data/diagnostico/`, `data/plan-accion/`, etc. |
+| Persistencia | `finca` reutiliza `data/users/<codigo>.json` (mismo objeto que `finanzas-cafeteros`, `diagnostico-finca-cafe` y `plan-mejora-calidad-cafe`); clientes/ventas/parámetros propios de comercialización en `data/comercializacion/<tipo>/<codigo>.json` | Cero infraestructura nueva; la Ficha de Productor (`finca`) es deliberadamente el mismo campo en las 4 apps para no duplicar datos fundamentales — ver ADR-003 en `finanzas-cafeteros/specs/04_arquitectura.md`. |
 | Auth | Middleware `auth`/`formador` ya existentes | El caficultor ve y edita solo sus propios datos; el formador ve el consolidado de su comunidad. |
 | Listas de referencia | `GET /api/comercializacion/listas-ref` | Devuelve catálogos usados en selects: variedades, etapas (E1-E6), tipos de actor, incoterms, monedas. Estructura por confirmar en el backend. |
 
@@ -64,8 +64,8 @@ graph LR
 ### Datos del productor (caficultor)
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/api/comercializacion/finca` | Datos del caficultor como vendedor (nombre, tipo persona, NIT/cédula, dirección, teléfono). |
-| PUT | `/api/comercializacion/finca` | Actualiza los datos del vendedor. |
+| GET | `/api/comercializacion/finca` | Alias de `/api/finca`: Ficha de Productor compartida (nombre, tipo persona, NIT/cédula, dirección, teléfono, vereda, altitud, variedad, hectáreas). Si ya se rellenó desde Finanzas Cafeteros o Diagnóstico de Finca, aquí aparece completa. |
+| PUT | `/api/comercializacion/finca` | Actualiza el mismo objeto `finca` — el cambio se ve también en las otras 3 apps. |
 
 ### Clientes (caficultor)
 | Método | Ruta | Descripción |
@@ -77,8 +77,9 @@ graph LR
 ### Ventas (caficultor)
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/api/comercializacion/ventas` | Lista de ventas del caficultor. Devuelve `{ ventas: [...] }` con márgenes calculados. |
+| GET | `/api/comercializacion/ventas` | Lista de ventas del caficultor (historial abierto — crece con cada venta registrada). Devuelve `{ ventas: [...] }` con márgenes calculados. Cada venta incluye `registradoEn` y, si se editó, `actualizadoEn`. |
 | POST | `/api/comercializacion/ventas` | Registra una venta. Body: `{ fecha, variedad, clienteId, etapa, cantidad, precio, moneda, costeLogistico }`. |
+| PUT | `/api/comercializacion/ventas/:id` | Edita una venta ya registrada (mismo body que POST). El caficultor puede corregir un dato mal introducido sin borrar y recrear la venta. |
 | DELETE | `/api/comercializacion/ventas/:id` | Borra una venta por ID. |
 
 ### Resumen y descarga (caficultor)
