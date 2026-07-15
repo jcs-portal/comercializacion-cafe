@@ -75,6 +75,12 @@ async function apiDelete(ruta, code) {
   const r = await fetch(API_BASE + ruta, { method: "DELETE", headers: { "X-Code": code, "X-Password": currentPassword } });
   return parsearRespuesta(r);
 }
+async function apiUpload(ruta, code, archivo) {
+  const form = new FormData();
+  form.append("archivo", archivo);
+  const r = await fetch(API_BASE + ruta, { method: "POST", headers: { "X-Code": code, "X-Password": currentPassword }, body: form });
+  return parsearRespuesta(r);
+}
 function descargarExcel(ruta, code, nombreSugerido) {
   fetch(API_BASE + ruta, { headers: { "X-Code": code, "X-Password": currentPassword } })
     .then(r => r.blob())
@@ -493,6 +499,8 @@ function Parametros({ code }) {
   const [p, setP] = useState(null);
   const [mensaje, setMensaje] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [resultadoImport, setResultadoImport] = useState(null);
   useEffect(() => { apiGet("/comercializacion/parametros", code).then(setP); }, []);
 
   const guardar = async () => {
@@ -500,6 +508,21 @@ function Parametros({ code }) {
     try { setP(await apiPut("/comercializacion/parametros", code, p)); setMensaje("✅ Guardado"); }
     catch (e) { setMensaje("⚠️ " + e.message); }
     finally { setGuardando(false); }
+  };
+  const importarArchivo = async (e) => {
+    const archivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!archivo) return;
+    setImportando(true); setResultadoImport(null);
+    try {
+      const r = await apiUpload("/comercializacion/importar-excel", code, archivo);
+      setResultadoImport({ ok: true, ...r });
+      apiGet("/comercializacion/parametros", code).then(setP);
+    } catch (err) {
+      setResultadoImport({ ok: false, error: err.message });
+    } finally {
+      setImportando(false);
+    }
   };
   if (!p) return <div style={{ padding: 20, color: C.bark }}>Cargando…</div>;
   const setRend = (k, v) => setP(x => ({ ...x, rendimientos: { ...x.rendimientos, [k]: v } }));
@@ -532,6 +555,38 @@ function Parametros({ code }) {
       </Tarjeta>
       {mensaje && <div style={{ fontSize: 12, color: C.roast, margin: "10px 0" }}>{mensaje}</div>}
       <Boton onClick={guardar} disabled={guardando} color={C.leaf}>{guardando ? "Guardando…" : "💾 Guardar"}</Boton>
+
+      <Titulo>Trabajar sin internet en el computador</Titulo>
+      <Tarjeta>
+        <div style={{ fontSize: 12, color: C.roast, lineHeight: 1.5, marginBottom: 10 }}>
+          Descarga tu Excel ("Mi Resumen" → 📥 Descargar Excel), edita las hojas Finca_Producción, Clientes,
+          Ventas y/o Parámetros sin conexión, y súbelo aquí para aplicar los cambios. No borra nada que no
+          esté en el Excel — actualiza lo que coincida por ID o por nombre, y crea lo que sea nuevo.
+        </div>
+        <label style={{ display: "inline-block" }}>
+          <input type="file" accept=".xlsx" onChange={importarArchivo} style={{ display: "none" }} disabled={importando} />
+          <span style={{ display: "inline-block", background: importando ? C.fog : C.earth, color: importando ? C.bark : "#fff",
+            padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: importando ? "default" : "pointer" }}>
+            {importando ? "Subiendo…" : "📤 Subir Excel"}
+          </span>
+        </label>
+        {resultadoImport && resultadoImport.ok && (
+          <div style={{ marginTop: 12, fontSize: 12.5, color: C.earth, lineHeight: 1.6 }}>
+            ✅ Importado: {resultadoImport.clientesCreados} cliente(s) nuevo(s), {resultadoImport.clientesActualizados} actualizado(s) ·{" "}
+            {resultadoImport.ventasCreadas} venta(s) nueva(s), {resultadoImport.ventasActualizadas} actualizada(s)
+            {resultadoImport.parametrosActualizados ? " · parámetros actualizados" : ""}
+            {resultadoImport.fincaActualizada ? " · ficha de productor actualizada" : ""}
+            {resultadoImport.avisos?.length > 0 && (
+              <div style={{ marginTop: 6, color: C.roast }}>
+                {resultadoImport.avisos.map((a, i) => <div key={i}>⚠️ {a}</div>)}
+              </div>
+            )}
+          </div>
+        )}
+        {resultadoImport && !resultadoImport.ok && (
+          <div style={{ marginTop: 12, fontSize: 12.5, color: "#b71c1c" }}>⚠️ {resultadoImport.error}</div>
+        )}
+      </Tarjeta>
     </div>
   );
 }
