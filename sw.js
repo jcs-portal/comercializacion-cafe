@@ -1,4 +1,4 @@
-// Service Worker — Comercialización Café
+// Service Worker — Finanzas Ventas Café
 // Fase C: instalable + offline + sync
 
 const CACHE    = 'ccaf-v1';

@@ -1,7 +1,7 @@
 {
-  "name": "Comercialización Café",
-  "short_name": "Comercialización",
-  "description": "Registro de ventas y comercialización de café para caficultores de San Adolfo, Huila",
+  "name": "Finanzas Ventas Café",
+  "short_name": "Ventas Café",
+  "description": "Registro de ventas de café para caficultores de San Adolfo, Huila",
   "start_url": "/comercializacion-cafe/",
   "scope": "/comercializacion-cafe/",
   "display": "standalone",
