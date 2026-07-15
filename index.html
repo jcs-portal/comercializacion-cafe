@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#2C1810" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Finanzas Ingresos" />
+  <meta name="apple-mobile-web-app-title" content="Finanzas Ventas Café" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="description" content="Finanzas Ingresos (comercialización de café) para productores de San Adolfo, Huila · Ubuntu Café" />
+  <meta name="description" content="Finanzas Ventas Café (comercialización de café) para productores de San Adolfo, Huila · Ubuntu Café" />
   <link rel="manifest" href="/comercializacion-cafe/manifest.json" />
   <link rel="apple-touch-icon" href="/comercializacion-cafe/icons/icon-192.png" />
-  <title>Finanzas Ingresos · Ubuntu Café</title>
+  <title>Finanzas Ventas Café · Ubuntu Café</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -209,7 +209,7 @@ function Login({ onLogin, codigoInicial, errorInicial }) {
     <div style={{ minHeight: "100vh", background: C.cream, maxWidth: 480, margin: "0 auto",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ fontSize: 48, marginBottom: 8 }}>📦</div>
-      <h1 style={{ fontSize: 20, fontWeight: 900, color: C.earth, marginBottom: 4, textAlign: "center" }}>Finanzas Ingresos</h1>
+      <h1 style={{ fontSize: 20, fontWeight: 900, color: C.earth, marginBottom: 4, textAlign: "center" }}>Finanzas Ventas Café</h1>
       <p style={{ fontSize: 13, color: C.bark, marginBottom: 28, textAlign: "center" }}>Ubuntu Café · San Adolfo y Acevedo, Huila</p>
       <label style={{ display: "block", fontSize: 14, fontWeight: 700, color: C.earth, marginBottom: 8, alignSelf: "flex-start" }}>
         Tu código (el mismo de Finanzas y Diagnóstico)
@@ -549,7 +549,7 @@ function PanelFormador({ code, onLogout }) {
       <div className="header-safe" style={{ background: C.earth, padding: "18px 16px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 900, color: C.cream }}>Panel del Formador</div>
-          <div style={{ fontSize: 11, color: C.clay }}>Finanzas Ingresos — consolidado de la comunidad</div>
+          <div style={{ fontSize: 11, color: C.clay }}>Finanzas Ventas Café — consolidado de la comunidad</div>
         </div>
         <button onClick={onLogout} style={{ background: "none", border: "none", color: C.clay, fontSize: 12 }}>Salir</button>
       </div>
@@ -606,7 +606,7 @@ function AppCaficultor({ code, onLogout }) {
       <div style={{ position: "sticky", top: 0, zIndex: 10 }}>
         <div className="header-safe" style={{ background: C.earth, padding: "18px 16px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 900, color: C.cream }}>Finanzas Ingresos</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: C.cream }}>Finanzas Ventas Café</div>
             <div style={{ fontSize: 11, color: C.clay }}>{code}</div>
           </div>
           <button onClick={onLogout} style={{ background: "none", border: "none", color: C.clay, fontSize: 12 }}>Salir</button>
