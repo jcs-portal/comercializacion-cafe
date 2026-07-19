@@ -420,6 +420,12 @@ function MisVentas({ code, listasRef }) {
           </div>
           <div style={{ fontSize: 12, color: C.roast, marginTop: 4 }}>{v.fecha || "Sin fecha"} · {v.variedad} · {v.etapa} · {fmtKg(v.cantidad)} a {v.precio} {v.moneda}/kg</div>
           <div style={{ fontSize: 12, color: C.bark, marginTop: 2 }}>Ingreso: {fmtCOP(v.ingresoTotalCOP)} · Margen producto: {fmtCOP(v.margenProductoCOP)} ({fmtPct(v.margenProductoPct)}) · Margen neto: {fmtCOP(v.margenNetoCOP)} ({fmtPct(v.margenNetoPct)})</div>
+          {(!v.clienteId || !v.etapa) && (
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.warn, marginTop: 4 }}>
+              ⚡ Incompleta{v.origen === "finanzas-totales" ? " — registrada rápido desde Finanzas Totales" : ""}
+              {v.compradorTexto ? ` (comprador: ${v.compradorTexto})` : ""}. Toca ✎ para añadir cliente y etapa.
+            </div>
+          )}
           {(v.registradoEn || v.actualizadoEn) && <div style={{ fontSize: 10, color: C.fog, marginTop: 4 }}>{v.actualizadoEn ? `Editado ${fmtFecha(v.actualizadoEn)}` : `Registrado ${fmtFecha(v.registradoEn)}`}</div>}
         </Tarjeta>
       ))}
